@@ -37,6 +37,14 @@ def search(gitlab_server, token, file_filter, text, group=None, project_filter=N
 
 
     for project in projects:
+        project_default_branch = "master"
+        branches = project.branches.list()
+        for branch in branches:
+            if branch.default == True:
+                project_default_branch = branch.name
+                if internal_debug:
+                    print("Setting project default branch to: ", project_default_branch)
+
         if internal_debug:
             if hasattr(project, 'path'):
                 path = project.path
@@ -51,25 +59,29 @@ def search(gitlab_server, token, file_filter, text, group=None, project_filter=N
             print(str(e), "Error getting tree in project:", project.name)
 
         for file in files:
-            if internal_debug:
-                fpath = file.get('path',None) if file.get('path',None)!=None else file.get('name',None)
-                eprint("  File: ",fpath)
+            if file['type'] == "blob":
+                if internal_debug:
+                    fpath = file.get('path',None) if file.get('path',None)!=None else file.get('name',None)
+                    eprint("  File: ",fpath)
 
-            if filename_regex:
-                matches=re.findall(file_filter, file['name'])
-                filename_matches = len(matches)>0
+                if filename_regex:
+                    matches=re.findall(file_filter, file['name'])
+                    filename_matches = len(matches)>0
+                else:
+                    filename_matches=file_filter == file['name']
+
+                if filename_matches:
+                    file_content = project.files.raw(file_path=file['path'], ref=project_default_branch)
+
+                    if text in str(file_content):
+                        return_value.append({
+                            "project": project.name,
+                            "file": file['path']
+                        })
             else:
-                filename_matches=file_filter == file['name']
-            
-            if filename_matches:
-                file_content = project.files.raw(file_path=file['path'], ref='master')
-                
-                if text in str(file_content):
-                    return_value.append({
-                        "project": project.name,
-                        "file": file['path']
-                    })
-    
+                if internal_debug:
+                    print(f"Skipping non-blob type file {file['name']} of type {file['type']}")
+
     return return_value
 
 if __name__ == '__main__':
